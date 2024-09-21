@@ -12,10 +12,12 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  runApp( MyApp());
+  runApp( const MyApp());
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
@@ -23,10 +25,10 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Plywood Admin Panel',
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: Color(0xFF212332),
+        scaffoldBackgroundColor: const Color(0xFF212332),
         textTheme: GoogleFonts.poppinsTextTheme(Theme.of(context).textTheme)
             .apply(bodyColor: Colors.white),
-        canvasColor: Color(0xFF2A2D3E),
+        canvasColor: const Color(0xFF2A2D3E),
       ),
       home: MultiProvider(
         providers: [
