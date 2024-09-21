@@ -1,0 +1,28 @@
+{
+  "flutter": {
+    "platforms": {
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "plywood-a93c7",
+          "configurations": {
+            "web": "1:376945114284:web:179870f0c9b8f2fe213309"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "p",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
