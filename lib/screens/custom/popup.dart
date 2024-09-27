@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
@@ -18,99 +19,121 @@ class _PopupCustomState extends State<PopupCustom> {
 
   // Controllers for form fields
   final TextEditingController priceController = TextEditingController();
+
   final TextEditingController descriptionController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
-  final TextEditingController imageUrlController = TextEditingController();
 
   // Variables to hold selected values
   String? selectedMainCategory;
   String? selectedSubCategory;
 
   // Lists to hold categories and subcategories fetched from Firestore
-  List<String> mainCategories = ['wooden', 'hardware', 'other'];
+  List<String> mainCategories = ['wooden'];
   List<String> subCategories = [];
 
-  File? selectedImage;
-  XFile? webImage;
+  List<File> selectedImages = [];
+  List<XFile> webImages = [];
+  bool isLoading = false;
+
+  List<TextEditingController> mmControllers = [];
+  List<TextEditingController> priceControllers = [];
+
+  List<String> mmList = [];
+  List<String> priceList = [];
 
   @override
   void initState() {
     super.initState();
   }
 
-  // Function to fetch subcategories based on the selected main category
+  // Add a new pair of text fields for "mm" and "price"
+  void addTextFields() {
+    setState(() {
+      mmControllers.add(TextEditingController());
+      priceControllers.add(TextEditingController());
+    });
+  }
+
+  // Function to fetch subcategories based on the selected sideMenu category
+// Function to fetch subcategories based on the selected sideMenu category
   Future<void> fetchSubCategoriesFromFirestore(String collectionName) async {
     try {
       final QuerySnapshot snapshot =
           await FirebaseFirestore.instance.collection(collectionName).get();
       List<String> fetchedSubCategories =
           snapshot.docs.map((doc) => doc.id).toList();
-      setState(() {
-        subCategories = fetchedSubCategories;
-        selectedSubCategory = null;
-      });
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error fetching subcategories: $e');
+
+      // Check if the widget is still mounted before calling setState
+      if (mounted) {
+        setState(() {
+          subCategories = fetchedSubCategories;
+          selectedSubCategory =
+              null; // Reset the subcategory selection when the sideMenu category changes
+        });
       }
+    } catch (e) {
+      print('Error fetching subcategories: $e');
     }
   }
 
   // Function to upload image to Firebase Storage and return its download URL
-  Future<String> uploadImageToFirebase({required String path}) async {
-    try {
-      String downloadUrl = '';
+  Future<List<String>> uploadImagesToFirebase({required String path}) async {
+    List<String> downloadUrls = [];
 
-      if (kIsWeb && webImage != null) {
-        Reference storageReference = FirebaseStorage.instance.ref().child(path);
-        UploadTask uploadTask =
-            storageReference.putData(await webImage!.readAsBytes());
-        TaskSnapshot snapshot = await uploadTask;
-        downloadUrl = await snapshot.ref.getDownloadURL();
-      } else if (!kIsWeb && selectedImage != null) {
-        Reference storageReference = FirebaseStorage.instance.ref().child(path);
-        UploadTask uploadTask = storageReference.putFile(selectedImage!);
-        TaskSnapshot snapshot = await uploadTask;
-        downloadUrl = await snapshot.ref.getDownloadURL();
+    try {
+      setState(() {
+        isLoading = true; // Show loader while uploading
+      });
+      if (kIsWeb) {
+        for (var webImage in webImages) {
+          Reference storageReference = FirebaseStorage.instance
+              .ref()
+              .child('$path/${DateTime.now().millisecondsSinceEpoch}');
+          UploadTask uploadTask =
+              storageReference.putData(await webImage.readAsBytes());
+          TaskSnapshot snapshot = await uploadTask;
+          String downloadUrl = await snapshot.ref.getDownloadURL();
+          downloadUrls.add(downloadUrl);
+        }
+      } else {
+        for (var image in selectedImages) {
+          Reference storageReference = FirebaseStorage.instance
+              .ref()
+              .child('$path/${DateTime.now().millisecondsSinceEpoch}');
+          UploadTask uploadTask = storageReference.putFile(image);
+          TaskSnapshot snapshot = await uploadTask;
+          String downloadUrl = await snapshot.ref.getDownloadURL();
+          downloadUrls.add(downloadUrl);
+        }
       }
-      return downloadUrl;
     } catch (e) {
-      print('Error uploading image: $e');
-      return '';
+      print('Error uploading images: $e');
+    } finally {
+      setState(() {
+        isLoading = false; // Hide loader after upload is done
+      });
     }
+
+    return downloadUrls;
   }
 
-  // Function to pick an image from the gallery
-  Future<void> pickImage() async {
+  // Function to pick multiple images
+  Future<void> pickImages() async {
     final ImagePicker picker = ImagePicker();
 
     if (kIsWeb) {
-      final XFile? pickedWebImage =
-          await picker.pickImage(source: ImageSource.gallery);
-      if (pickedWebImage != null) {
+      final List<XFile> pickedWebImages = await picker.pickMultiImage();
+      if (pickedWebImages.isNotEmpty) {
         setState(() {
-          webImage = pickedWebImage;
+          webImages.addAll(pickedWebImages);
         });
-        if (selectedMainCategory != null && selectedSubCategory != null) {
-          String path =
-              '${selectedMainCategory!}/${selectedSubCategory!}/${DateTime.now().millisecondsSinceEpoch}';
-          String imageUrl = await uploadImageToFirebase(path: path);
-          imageUrlController.text = imageUrl;
-        }
       }
     } else {
-      final XFile? pickedImage =
-          await picker.pickImage(source: ImageSource.gallery);
-      if (pickedImage != null) {
+      final List<XFile> pickedImages = await picker.pickMultiImage();
+      if (pickedImages.isNotEmpty) {
         setState(() {
-          selectedImage = File(pickedImage.path);
+          selectedImages.addAll(pickedImages.map((image) => File(image.path)));
         });
-        if (selectedMainCategory != null && selectedSubCategory != null) {
-          String path =
-              '${selectedMainCategory!}/${selectedSubCategory!}/${DateTime.now().millisecondsSinceEpoch}';
-          String imageUrl = await uploadImageToFirebase(path: path);
-          imageUrlController.text = imageUrl;
-        }
       }
     }
   }
@@ -122,17 +145,12 @@ class _PopupCustomState extends State<PopupCustom> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Main Category Dropdown
+          // Main Category Dropdown field (wooden, hardware, other)
           DropdownButtonFormField<String>(
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               labelText: 'Main Category',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.brown[300]!),
-              ),
-              filled: true,
-              fillColor: Colors.brown[50],
-              labelStyle: TextStyle(color: Colors.brown[700]),
+              border: OutlineInputBorder(),
+              hintText: 'Select Main Category',
             ),
             value: selectedMainCategory,
             items: mainCategories.map((String category) {
@@ -144,34 +162,29 @@ class _PopupCustomState extends State<PopupCustom> {
             onChanged: (value) {
               setState(() {
                 selectedMainCategory = value;
-                subCategories.clear();
+                subCategories
+                    .clear(); // Clear subcategories when main category changes
                 if (value != null) {
+                  // Fetch subcategories when a main category is selected
                   fetchSubCategoriesFromFirestore(value);
                 }
               });
             },
             validator: (value) {
               if (value == null || value.isEmpty) {
-                return 'Please select a main category';
+                return 'Please select a sideMenu category';
               }
               return null;
             },
-            dropdownColor: Colors.brown[50],
-            style: TextStyle(color: Colors.brown[700]),
           ),
           const SizedBox(height: 16),
 
-          // Subcategory Dropdown
+          // Subcategory Dropdown field (documents from the selected collection)
           DropdownButtonFormField<String>(
-            decoration: InputDecoration(
+            decoration: const InputDecoration(
               labelText: 'Subcategory',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide(color: Colors.brown[300]!),
-              ),
-              filled: true,
-              fillColor: Colors.brown[50],
-              labelStyle: TextStyle(color: Colors.brown[700]),
+              border: OutlineInputBorder(),
+              hintText: 'Select Subcategory',
             ),
             value: selectedSubCategory,
             items: subCategories.map((String subCategory) {
@@ -191,8 +204,6 @@ class _PopupCustomState extends State<PopupCustom> {
               }
               return null;
             },
-            dropdownColor: Colors.brown[50],
-            style: TextStyle(color: Colors.brown[700]),
           ),
           const SizedBox(height: 16),
 
@@ -200,17 +211,11 @@ class _PopupCustomState extends State<PopupCustom> {
             // Name field
             TextFormField(
               controller: nameController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Name',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.brown[300]!),
-                ),
-                filled: true,
-                fillColor: Colors.brown[50],
-                labelStyle: TextStyle(color: Colors.brown[700]),
+                border: OutlineInputBorder(),
+                hintText: 'Enter Name',
               ),
-              style: TextStyle(color: Colors.brown[700]),
               validator: (value) {
                 if (value == null || value.isEmpty) {
                   return 'Please enter a name';
@@ -224,17 +229,11 @@ class _PopupCustomState extends State<PopupCustom> {
             TextFormField(
               controller: priceController,
               keyboardType: TextInputType.number,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Price',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.brown[300]!),
-                ),
-                filled: true,
-                fillColor: Colors.brown[50],
-                labelStyle: TextStyle(color: Colors.brown[700]),
+                border: OutlineInputBorder(),
+                hintText: 'Enter Price',
               ),
-              style: TextStyle(color: Colors.brown[700]),
               validator: (value) {
                 if (value == null || value.isEmpty) {
                   return 'Please enter a price';
@@ -249,17 +248,11 @@ class _PopupCustomState extends State<PopupCustom> {
             // Description field
             TextFormField(
               controller: descriptionController,
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 labelText: 'Description',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.brown[300]!),
-                ),
-                filled: true,
-                fillColor: Colors.brown[50],
-                labelStyle: TextStyle(color: Colors.brown[700]),
+                border: OutlineInputBorder(),
+                hintText: 'Enter Description',
               ),
-              style: TextStyle(color: Colors.brown[700]),
               validator: (value) {
                 if (value == null || value.isEmpty) {
                   return 'Please enter a description';
@@ -268,100 +261,167 @@ class _PopupCustomState extends State<PopupCustom> {
               },
             ),
             const SizedBox(height: 16),
-
+            if (kIsWeb)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: webImages
+                    .map((image) => Image.network(image.path,
+                        width: 100, height: 100, fit: BoxFit.cover))
+                    .toList(),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: selectedImages
+                    .map((image) => Image.file(image,
+                        width: 100, height: 100, fit: BoxFit.cover))
+                    .toList(),
+              ),
+            const SizedBox(height: 20),
+            // Add "mm" and "price" fields
+            ListView.builder(
+              shrinkWrap: true,
+              itemCount: mmControllers.length,
+              itemBuilder: (context, index) {
+                return Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: mmControllers[index],
+                        decoration: const InputDecoration(
+                          labelText: 'MM',
+                          border: OutlineInputBorder(),
+                          hintText: 'Enter MM',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter MM';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: TextFormField(
+                        controller: priceControllers[index],
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Price',
+                          border: OutlineInputBorder(),
+                          hintText: 'Enter Price',
+                        ),
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Please enter Price';
+                          }
+                          return null;
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 20),
+            IconButton(
+              onPressed: addTextFields,
+              icon: const Icon(Icons.add),
+            ),
             // Image picker button
             ElevatedButton(
-              onPressed: pickImage,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.brown[600],
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
+              onPressed: pickImages,
               child: const Text('Pick Image'),
             ),
             const SizedBox(height: 16),
 
-            // Image URL TextField
-            TextFormField(
-              controller: imageUrlController,
-              decoration: InputDecoration(
-                labelText: 'Image URL',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.brown[300]!),
-                ),
-                filled: true,
-                fillColor: Colors.brown[50],
-                labelStyle: TextStyle(color: Colors.brown[700]),
-              ),
-              style: TextStyle(color: Colors.brown[700]),
-              readOnly: true,
-            ),
+            // Image URL TextField (auto-filled after upload)
           ],
 
           // Submit button
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
+          if (isLoading)
+            const Center(
+              child: CircularProgressIndicator(),
+            ),
           Center(
             child: ElevatedButton(
-              onPressed: () async {
-                if (formKey.currentState!.validate()) {
-                  try {
-                    if (selectedSubCategory == null || selectedSubCategory!.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please select a subcategory.')),
-                      );
-                      return;
-                    }
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      if (formKey.currentState!.validate()) {
+                        mmList.clear();
+                        priceList.clear();
 
-                    final docRef = FirebaseFirestore.instance
-                        .collection(selectedMainCategory!)
-                        .doc(selectedSubCategory!);
+                        for (int i = 0; i < mmControllers.length; i++) {
+                          mmList.add(mmControllers[i].text);
+                          priceList.add(priceControllers[i].text);
+                        }
 
-                    final newItem = {
-                      'name': nameController.text,
-                      'price': double.parse(priceController.text),
-                      'description': descriptionController.text,
-                      'url': imageUrlController.text,
-                    };
+                        try {
+                          // Ensure that selectedSubCategory is not null or empty
+                          if (selectedSubCategory == null ||
+                              selectedSubCategory!.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please select a subcategory.'),
+                              ),
+                            );
+                            return;
+                          }
 
-                    await docRef.update({
-                      '$selectedSubCategory': FieldValue.arrayUnion([newItem])
-                    });
+                          // Reference to the document where the array will be stored
+                          final docRef = FirebaseFirestore.instance
+                              .collection(selectedMainCategory!)
+                              .doc(selectedSubCategory!);
 
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Data added to Firestore successfully!')),
-                    );
+                          List<String> imageUrls = await uploadImagesToFirebase(
+                            path:
+                                '${selectedMainCategory!}/${selectedSubCategory!}',
+                          );
+                          // Create the new item map with a local timestamp
+                          final newItem = {
+                            'name': nameController.text,
+                            'description': descriptionController.text,
+                            'url': imageUrls,
+                            'mm': mmList, // Store MM list
+                            'price': priceList,
+                          };
 
-                    formKey.currentState!.reset();
-                    setState(() {
-                      selectedMainCategory = null;
-                      selectedSubCategory = null;
-                      subCategories.clear();
-                      imageUrlController.clear();
-                      selectedImage = null;
-                      webImage = null;
-                    });
-                    widget.onSubmitSuccess();
-                  } catch (e) {
-                    print('Error adding data to Firestore: $e');
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to add data: $e')),
-                    );
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.brown[700],
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text('Submit', style: TextStyle(fontSize: 16)),
+                          // Update the document to add the new item to the array
+                          await docRef.set(newItem);
+
+                          // Show a success message
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content:
+                                  Text('Data added to Firestore successfully!'),
+                            ),
+                          );
+
+                          // Optionally, clear the form after submission
+                          formKey.currentState!.reset();
+                          setState(() {
+                            selectedMainCategory = null;
+                            selectedSubCategory = null;
+                            subCategories.clear();
+                            selectedImages.clear();
+                            webImages.clear();
+                          });
+                          widget.onSubmitSuccess();
+                        } catch (e) {
+                          print('Error adding data to Firestore: $e');
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to add data: $e'),
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: const Text('Submit'),
             ),
           )
         ],

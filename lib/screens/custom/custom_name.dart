@@ -24,11 +24,6 @@ class HardwareSection extends StatelessWidget {
               title,
               style: Theme.of(context).textTheme.titleLarge,
             ),
-            // ElevatedButton.icon(
-            //   onPressed: onAddItem,
-            //   icon: const Icon(Icons.add),
-            //   label: const Text("Add Item"),
-            // ),
           ],
         ),
         const SizedBox(height: 16),
