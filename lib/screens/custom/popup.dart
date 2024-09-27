@@ -1,14 +1,14 @@
 import 'dart:io';
-
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
 class PopupCustom extends StatefulWidget {
   final VoidCallback onSubmitSuccess;
-  const PopupCustom({super.key, required this.onSubmitSuccess});
+  const PopupCustom({Key? key, required this.onSubmitSuccess})
+      : super(key: key);
 
   @override
   State<PopupCustom> createState() => _PopupCustomState();
@@ -16,18 +16,12 @@ class PopupCustom extends StatefulWidget {
 
 class _PopupCustomState extends State<PopupCustom> {
   final formKey = GlobalKey<FormState>();
-
-  // Controllers for form fields
   final TextEditingController priceController = TextEditingController();
-
   final TextEditingController descriptionController = TextEditingController();
   final TextEditingController nameController = TextEditingController();
 
-  // Variables to hold selected values
   String? selectedMainCategory;
   String? selectedSubCategory;
-
-  // Lists to hold categories and subcategories fetched from Firestore
   List<String> mainCategories = ['wooden'];
   List<String> subCategories = [];
 
@@ -38,15 +32,12 @@ class _PopupCustomState extends State<PopupCustom> {
   List<TextEditingController> mmControllers = [];
   List<TextEditingController> priceControllers = [];
 
-  List<String> mmList = [];
-  List<String> priceList = [];
-
   @override
   void initState() {
     super.initState();
+    addTextFields(); // Add initial text fields
   }
 
-  // Add a new pair of text fields for "mm" and "price"
   void addTextFields() {
     setState(() {
       mmControllers.add(TextEditingController());
@@ -54,21 +45,16 @@ class _PopupCustomState extends State<PopupCustom> {
     });
   }
 
-  // Function to fetch subcategories based on the selected sideMenu category
-// Function to fetch subcategories based on the selected sideMenu category
   Future<void> fetchSubCategoriesFromFirestore(String collectionName) async {
     try {
       final QuerySnapshot snapshot =
           await FirebaseFirestore.instance.collection(collectionName).get();
       List<String> fetchedSubCategories =
           snapshot.docs.map((doc) => doc.id).toList();
-
-      // Check if the widget is still mounted before calling setState
       if (mounted) {
         setState(() {
           subCategories = fetchedSubCategories;
-          selectedSubCategory =
-              null; // Reset the subcategory selection when the sideMenu category changes
+          selectedSubCategory = null;
         });
       }
     } catch (e) {
@@ -76,14 +62,10 @@ class _PopupCustomState extends State<PopupCustom> {
     }
   }
 
-  // Function to upload image to Firebase Storage and return its download URL
   Future<List<String>> uploadImagesToFirebase({required String path}) async {
     List<String> downloadUrls = [];
-
     try {
-      setState(() {
-        isLoading = true; // Show loader while uploading
-      });
+      setState(() => isLoading = true);
       if (kIsWeb) {
         for (var webImage in webImages) {
           Reference storageReference = FirebaseStorage.instance
@@ -109,323 +91,286 @@ class _PopupCustomState extends State<PopupCustom> {
     } catch (e) {
       print('Error uploading images: $e');
     } finally {
-      setState(() {
-        isLoading = false; // Hide loader after upload is done
-      });
+      setState(() => isLoading = false);
     }
-
     return downloadUrls;
   }
 
-  // Function to pick multiple images
   Future<void> pickImages() async {
     final ImagePicker picker = ImagePicker();
-
     if (kIsWeb) {
       final List<XFile> pickedWebImages = await picker.pickMultiImage();
       if (pickedWebImages.isNotEmpty) {
-        setState(() {
-          webImages.addAll(pickedWebImages);
-        });
+        setState(() => webImages.addAll(pickedWebImages));
       }
     } else {
       final List<XFile> pickedImages = await picker.pickMultiImage();
       if (pickedImages.isNotEmpty) {
-        setState(() {
-          selectedImages.addAll(pickedImages.map((image) => File(image.path)));
-        });
+        setState(() => selectedImages
+            .addAll(pickedImages.map((image) => File(image.path))));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Form(
-      key: formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDropdown(
+                label: 'Main Category',
+                value: selectedMainCategory,
+                items: mainCategories,
+                onChanged: (value) {
+                  setState(() {
+                    selectedMainCategory = value;
+                    subCategories.clear();
+                    if (value != null) {
+                      fetchSubCategoriesFromFirestore(value);
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+              _buildDropdown(
+                label: 'Subcategory',
+                value: selectedSubCategory,
+                items: subCategories,
+                onChanged: (value) {
+                  setState(() => selectedSubCategory = value);
+                },
+              ),
+              if (selectedSubCategory != null) ...[
+                const SizedBox(height: 16),
+                _buildTextField(controller: nameController, label: 'Name'),
+                const SizedBox(height: 16),
+                _buildTextField(
+                    controller: priceController,
+                    label: 'Price',
+                    keyboardType: TextInputType.number),
+                const SizedBox(height: 16),
+                _buildTextField(
+                    controller: descriptionController,
+                    label: 'Description',
+                    maxLines: 3),
+                const SizedBox(height: 16),
+                _buildImagePreview(),
+                const SizedBox(height: 16),
+                _buildMMPriceFields(),
+                const SizedBox(height: 16),
+                _buildAddButton(),
+                const SizedBox(height: 16),
+                _buildImagePickerButton(),
+                const SizedBox(height: 24),
+                _buildSubmitButton(),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdown({
+    required String label,
+    required String? value,
+    required List<String> items,
+    required void Function(String?)? onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      style: const TextStyle(color: Colors.grey),
+      iconEnabledColor: Colors.black,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: Colors.grey[200],
+      ),
+      value: value,
+      items: items
+          .map((String item) =>
+              DropdownMenuItem<String>(value: item, child: Text(item)))
+          .toList(),
+      onChanged: onChanged,
+      validator: (value) =>
+          value == null || value.isEmpty ? 'Please select a $label' : null,
+    );
+  }
+
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    TextInputType keyboardType = TextInputType.text,
+    int maxLines = 1,
+  }) {
+    return TextFormField(
+      style: const TextStyle(color: Colors.grey),
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      decoration: InputDecoration(
+        labelText: label,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        filled: true,
+        fillColor: Colors.grey[200],
+      ),
+      validator: (value) =>
+          value == null || value.isEmpty ? 'Please enter $label' : null,
+    );
+  }
+
+  Widget _buildImagePreview() {
+    return Container(
+      height: 120,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
         children: [
-          // Main Category Dropdown field (wooden, hardware, other)
-          DropdownButtonFormField<String>(
-            decoration: const InputDecoration(
-              labelText: 'Main Category',
-              border: OutlineInputBorder(),
-              hintText: 'Select Main Category',
-            ),
-            value: selectedMainCategory,
-            items: mainCategories.map((String category) {
-              return DropdownMenuItem<String>(
-                value: category,
-                child: Text(category),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                selectedMainCategory = value;
-                subCategories
-                    .clear(); // Clear subcategories when main category changes
-                if (value != null) {
-                  // Fetch subcategories when a main category is selected
-                  fetchSubCategoriesFromFirestore(value);
-                }
-              });
-            },
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Please select a sideMenu category';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-
-          // Subcategory Dropdown field (documents from the selected collection)
-          DropdownButtonFormField<String>(
-            decoration: const InputDecoration(
-              labelText: 'Subcategory',
-              border: OutlineInputBorder(),
-              hintText: 'Select Subcategory',
-            ),
-            value: selectedSubCategory,
-            items: subCategories.map((String subCategory) {
-              return DropdownMenuItem<String>(
-                value: subCategory,
-                child: Text(subCategory),
-              );
-            }).toList(),
-            onChanged: (value) {
-              setState(() {
-                selectedSubCategory = value;
-              });
-            },
-            validator: (value) {
-              if (value == null || value.isEmpty) {
-                return 'Please select a subcategory';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 16),
-
-          if (selectedSubCategory != null) ...[
-            // Name field
-            TextFormField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Name',
-                border: OutlineInputBorder(),
-                hintText: 'Enter Name',
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter a name';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-
-            // Price field
-            TextFormField(
-              controller: priceController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Price',
-                border: OutlineInputBorder(),
-                hintText: 'Enter Price',
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter a price';
-                } else if (double.tryParse(value) == null) {
-                  return 'Please enter a valid number';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-
-            // Description field
-            TextFormField(
-              controller: descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                border: OutlineInputBorder(),
-                hintText: 'Enter Description',
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter a description';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            if (kIsWeb)
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: webImages
-                    .map((image) => Image.network(image.path,
-                        width: 100, height: 100, fit: BoxFit.cover))
-                    .toList(),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: selectedImages
-                    .map((image) => Image.file(image,
-                        width: 100, height: 100, fit: BoxFit.cover))
-                    .toList(),
-              ),
-            const SizedBox(height: 20),
-            // Add "mm" and "price" fields
-            ListView.builder(
-              shrinkWrap: true,
-              itemCount: mmControllers.length,
-              itemBuilder: (context, index) {
-                return Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: mmControllers[index],
-                        decoration: const InputDecoration(
-                          labelText: 'MM',
-                          border: OutlineInputBorder(),
-                          hintText: 'Enter MM',
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter MM';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller: priceControllers[index],
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Price',
-                          border: OutlineInputBorder(),
-                          hintText: 'Enter Price',
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter Price';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            IconButton(
-              onPressed: addTextFields,
-              icon: const Icon(Icons.add),
-            ),
-            // Image picker button
-            ElevatedButton(
-              onPressed: pickImages,
-              child: const Text('Pick Image'),
-            ),
-            const SizedBox(height: 16),
-
-            // Image URL TextField (auto-filled after upload)
-          ],
-
-          // Submit button
-          const SizedBox(height: 16),
-          if (isLoading)
-            const Center(
-              child: CircularProgressIndicator(),
-            ),
-          Center(
-            child: ElevatedButton(
-              onPressed: isLoading
-                  ? null
-                  : () async {
-                      if (formKey.currentState!.validate()) {
-                        mmList.clear();
-                        priceList.clear();
-
-                        for (int i = 0; i < mmControllers.length; i++) {
-                          mmList.add(mmControllers[i].text);
-                          priceList.add(priceControllers[i].text);
-                        }
-
-                        try {
-                          // Ensure that selectedSubCategory is not null or empty
-                          if (selectedSubCategory == null ||
-                              selectedSubCategory!.isEmpty) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Please select a subcategory.'),
-                              ),
-                            );
-                            return;
-                          }
-
-                          // Reference to the document where the array will be stored
-                          final docRef = FirebaseFirestore.instance
-                              .collection(selectedMainCategory!)
-                              .doc(selectedSubCategory!);
-
-                          List<String> imageUrls = await uploadImagesToFirebase(
-                            path:
-                                '${selectedMainCategory!}/${selectedSubCategory!}',
-                          );
-                          // Create the new item map with a local timestamp
-                          final newItem = {
-                            'name': nameController.text,
-                            'description': descriptionController.text,
-                            'url': imageUrls,
-                            'mm': mmList, // Store MM list
-                            'price': priceList,
-                          };
-
-                          // Update the document to add the new item to the array
-                          await docRef.set(newItem);
-
-                          // Show a success message
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content:
-                                  Text('Data added to Firestore successfully!'),
-                            ),
-                          );
-
-                          // Optionally, clear the form after submission
-                          formKey.currentState!.reset();
-                          setState(() {
-                            selectedMainCategory = null;
-                            selectedSubCategory = null;
-                            subCategories.clear();
-                            selectedImages.clear();
-                            webImages.clear();
-                          });
-                          widget.onSubmitSuccess();
-                        } catch (e) {
-                          print('Error adding data to Firestore: $e');
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Failed to add data: $e'),
-                            ),
-                          );
-                        }
-                      }
-                    },
-              child: const Text('Submit'),
-            ),
-          )
+          ...webImages
+              .map((image) => _buildImageThumbnail(image.path, isWeb: true)),
+          ...selectedImages.map((image) => _buildImageThumbnail(image.path)),
         ],
       ),
     );
+  }
+
+  Widget _buildImageThumbnail(String path, {bool isWeb = false}) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8.0),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: isWeb
+            ? Image.network(path, width: 100, height: 100, fit: BoxFit.fill)
+            : Image.file(File(path), width: 100, height: 100, fit: BoxFit.fill),
+      ),
+    );
+  }
+
+  Widget _buildMMPriceFields() {
+    return Column(
+      children: List.generate(
+        mmControllers.length,
+        (index) => Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: Row(
+            children: [
+              Expanded(
+                  child: _buildTextField(
+                      controller: mmControllers[index], label: 'MM')),
+              const SizedBox(width: 8),
+              Expanded(
+                  child: _buildTextField(
+                      controller: priceControllers[index],
+                      label: 'Price',
+                      keyboardType: TextInputType.number)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddButton() {
+    return Center(
+      child: ElevatedButton.icon(
+        onPressed: addTextFields,
+        icon: const Icon(Icons.add),
+        label: const Text('Add MM and Price'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.green,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImagePickerButton() {
+    return Center(
+      child: ElevatedButton.icon(
+        onPressed: pickImages,
+        icon: const Icon(Icons.image),
+        label: const Text('Pick Images'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSubmitButton() {
+    return Center(
+      child: ElevatedButton(
+        onPressed: isLoading ? null : _submitForm,
+        child: isLoading
+            ? const CircularProgressIndicator()
+            : const Text('Submit'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.orange,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
+  }
+
+  void _submitForm() async {
+    if (formKey.currentState!.validate()) {
+      if (selectedSubCategory == null || selectedSubCategory!.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a subcategory.')),
+        );
+        return;
+      }
+
+      try {
+        final docRef = FirebaseFirestore.instance
+            .collection(selectedMainCategory!)
+            .doc(selectedSubCategory!);
+
+        List<String> imageUrls = await uploadImagesToFirebase(
+          path: '${selectedMainCategory!}/${selectedSubCategory!}',
+        );
+
+        final newItem = {
+          'name': nameController.text,
+          'description': descriptionController.text,
+          'url': imageUrls,
+          'mm': mmControllers.map((c) => c.text).toList(),
+          'price': priceControllers.map((c) => c.text).toList(),
+        };
+
+        await docRef.set(newItem);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Data added to Firestore successfully!')),
+        );
+
+        formKey.currentState!.reset();
+        setState(() {
+          selectedMainCategory = null;
+          selectedSubCategory = null;
+          subCategories.clear();
+          selectedImages.clear();
+          webImages.clear();
+          mmControllers.clear();
+          priceControllers.clear();
+        });
+        widget.onSubmitSuccess();
+      } catch (e) {
+        print('Error adding data to Firestore: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to add data: $e')),
+        );
+      }
+    }
   }
 }
