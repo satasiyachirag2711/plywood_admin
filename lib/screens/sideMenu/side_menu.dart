@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:plywood_admin/responsive.dart';
 
 class SideMenu extends StatefulWidget {
   const SideMenu({super.key});
@@ -86,7 +87,11 @@ class _SideMenuState extends State<SideMenu> {
       child: Column(
         children: [
           _buildMenuItem(
-              title: "Dashboard", icon: Icons.dashboard, onTap: () {}),
+              title: "Dashboard",
+              icon: Icons.dashboard,
+              onTap: () {
+                data.value == 0;
+              }),
           _buildExpansionMenuItem(
               index: 0,
               title: "Company",

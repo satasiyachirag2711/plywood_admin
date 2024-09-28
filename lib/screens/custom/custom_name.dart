@@ -4,13 +4,11 @@ import 'package:plywood_admin/screens/custom/custom_gridview.dart';
 class HardwareSection extends StatelessWidget {
   final String title;
   final DocumentReference documentRef;
-  final String dataKey;
 
   const HardwareSection({
     Key? key,
     required this.title,
     required this.documentRef,
-    required this.dataKey,
   }) : super(key: key);
 
   @override
@@ -29,7 +27,6 @@ class HardwareSection extends StatelessWidget {
         const SizedBox(height: 16),
         CustomDataGrid(
           documentRef: documentRef,
-          dataKey: dataKey,
         ),
       ],
     );
